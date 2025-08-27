@@ -1,75 +1,148 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import MetalCard from '@/components/MetalCard';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  RefreshControl,
+  Animated,
+} from 'react-native';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+const API_URL =
+  'https://api.metals.dev/v1/latest?api_key=XOPQTLDBAHAPK0KDRTOE128KDRTOE&currency=INR&unit=g';
+
+const TITLE_MAX_SIZE = 34;
+const TITLE_MIN_SIZE = 20;
 
 export default function HomeScreen() {
+  const [symbols, setSymbols] = useState([]);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const fetchPrices = async () => {
+    try {
+      const response = await fetch(API_URL);
+      if (!response.ok) throw new Error('Failed to fetch metal prices');
+      const data = await response.json();
+
+      const metals = data.metals;
+      const timestamp = new Date(data.timestamps.metal).getTime() / 1000;
+
+      const formatted = [
+        { metal: 'gold', price: metals.gold, timestamp },
+        { metal: 'silver', price: metals.silver, timestamp },
+        { metal: 'platinum', price: metals.platinum, timestamp },
+        { metal: 'palladium', price: metals.palladium, timestamp },
+      ];
+
+      setSymbols(formatted);
+      setError(null);
+    } catch (e) {
+      console.error(e);
+      setError('Could not connect to Metals.dev.');
+    }
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchPrices();
+    setRefreshing(false);
+  }, []);
+
+  useEffect(() => {
+    fetchPrices();
+  }, []);
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  // Animate title
+  const titleSize = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [TITLE_MAX_SIZE, TITLE_MIN_SIZE],
+    extrapolate: 'clamp',
+  });
+
+  const titleTranslateY = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, -10],
+    extrapolate: 'clamp',
+  });
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scrollContent}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#FFD700']}
+          />
+        }
+      >
+        <Animated.Text
+          style={[
+            styles.title,
+            {
+              fontSize: titleSize,
+              transform: [{ translateY: titleTranslateY }],
+            },
+          ]}
+        >
+          Live Metal Prices
+        </Animated.Text>
+
+        <View style={styles.cardGrid}>
+          {symbols.map((symbol) => (
+            <MetalCard key={symbol.metal} metalSymbol={symbol} />
+          ))}
+        </View>
+      </Animated.ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: '#0d0d16',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+  },
+  scrollContent: {
+    paddingBottom: 60,
+  },
+  title: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    textAlign: 'left',
+    marginBottom: 30, // nice even gap before cards
+  },
+  cardGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
+  },
+  center: {
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+    flex: 1,
   },
 });
